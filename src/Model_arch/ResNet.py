@@ -16,7 +16,6 @@ class BasicBlock(nn.Module):
         self.bn2 = nn.BatchNorm2d(out_channels)
         self.downsample = downsample
 
-
     def forward(self, x):
         identity = x
 
@@ -37,7 +36,7 @@ class BasicBlock(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self,in_ch, block, layers, stop_layer, num_classes=1000):
+    def __init__(self,in_ch, layers, stop_layer=4,block=BasicBlock, num_classes=1000):
         super(ResNet, self).__init__()
         self.in_channels = in_ch
         self.stop_layer = stop_layer
@@ -49,7 +48,6 @@ class ResNet(nn.Module):
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)
-
 
     def _make_layer(self, block, out_channels, blocks, stride=1):
         downsample = None
@@ -73,22 +71,21 @@ class ResNet(nn.Module):
         B, T, C, H, W = x.shape
         x = x.view(B*T,C,H,W)
 
-
         x = self.layer1(x)
 
         if self.stop_layer == 1:
-            return x.view(B,T,x.shape(1),x.shape(2),x.shape(3))
+            return x.view(B,T,x.shape[1],x.shape[2],x.shape[3])
 
         x = self.layer2(x)
 
         if self.stop_layer == 2:
-            return x.view(B, T, x.shape(1), x.shape(2), x.shape(3))
+            return x.view(B, T, x.shape[1], x.shape[2], x.shape[3])
 
         x = self.layer3(x)
 
         if self.stop_layer == 3:
-            return x.view(B, T, x.shape(1), x.shape(2), x.shape(3))
+            return x.view(B, T, x.shape[1], x.shape[2], x.shape[3])
 
         x = self.layer4(x)
 
-        return x.view(B, T, x.shape(1), x.shape(2), x.shape(3))
+        return x.view(B, T, x.shape[1], x.shape[2], x.shape[3])

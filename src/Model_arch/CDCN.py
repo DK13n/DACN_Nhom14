@@ -89,7 +89,7 @@ class CDCN(nn.Module):
 
         x = self.backbone(x)
 
-        x = x.view(B,T,x.size(1),x.size(2),x.size(3))
+        x = x.view(B,T,x.shape[1],x.shape[2],x.shape[3])
 
         return x
 
