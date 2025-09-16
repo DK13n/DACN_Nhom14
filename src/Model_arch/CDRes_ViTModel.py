@@ -2,9 +2,9 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 import math
-from CDCN import CDCN
-from ResNet import ResNet
-from ViT import TemporalViT
+from src.Model_arch.CDCN import CDCN
+from src.Model_arch.ResNet import ResNet
+from src.Model_arch.ViT import TemporalViT
 
 
 class CDRes_ViT(nn.Module):
@@ -66,9 +66,3 @@ class CDRes_ViT(nn.Module):
             "alpha": a.detach()     # scalar tensor in (0,1)
         }
 
-if __name__ == "__main__":
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    model = CDRes_ViT(device,d_model=256)
-    x_vid = torch.randn(2, 8, 3, 224, 224)  # B=2, T=8
-    out_v = model(x_vid)
-    print(out_v["vit"].shape, out_v["resnet"].shape, out_v["fused"].shape, out_v["alpha"])

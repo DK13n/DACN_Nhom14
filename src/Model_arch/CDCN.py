@@ -93,7 +93,3 @@ class CDCN(nn.Module):
 
         return x
 
-if __name__ == "__main__":
-    convlayer = nn.Conv2d(3,16,kernel_size=3,stride=1,padding=1,dilation=1,groups=1)
-    w = convlayer.weight
-    print(w.shape)
