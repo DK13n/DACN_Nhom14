@@ -201,12 +201,4 @@ def make_train_dataset(
     return train_loader,val_loader
 
 
-if __name__ == "__main__":
-    csv_path = r"Data\metadata\metadata\publics_train_metadata.csv"
-    base_dir = r"Data\publics_data_train"
 
-    train_loader, val_loader = make_train_dataset(csv_path, base_dir)
-
-    batch = next(iter(train_loader))
-    print(batch["x"].shape)  # (B, T, C, H, W)
-    print(batch["y"].shape)  # (B,)

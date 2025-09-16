@@ -100,20 +100,3 @@ class TemporalViT(nn.Module):
         return cls_out, seq_out
 
 
-if __name__ == "__main__":
-    B, T, C, H, W = 2, 8, 128, 28, 28
-    cdcn_out = torch.randn(B, T, C, H, W)
-
-    tem_vit = TemporalViT(
-        in_channels=C,  # 128
-        embed_dim=256,
-        depth=4,
-        num_heads=8,
-        mlp_ratio=4.0,
-        dropout=0.1,
-        use_spatial_proj=False,  # có thể True nếu bạn muốn thêm conv1x1 trước GAP
-        max_len=256
-    )
-
-    cls_vec, seq_vec = tem_vit(cdcn_out)  # cls_vec: (B,256), seq_vec: (B,T,256)
-    print(cls_vec.shape, seq_vec.shape)
