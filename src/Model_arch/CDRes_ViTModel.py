@@ -37,6 +37,10 @@ class CDRes_ViT(nn.Module):
         self._alpha = nn.Parameter(torch.tensor(0.5))   # khởi tạo 0.5
 
         self.proj = nn.Linear(512,d_model,bias=True)
+
+        self.norm = nn.LayerNorm(d_model)
+
+
     @property
     def alpha(self):
         return torch.sigmoid(self._alpha)  # (0,1)
@@ -55,6 +59,8 @@ class CDRes_ViT(nn.Module):
         res_vec = res_vec.view(B,T,C).mean(dim=1)
         res_vec = self.proj(res_vec)
 
+        res_vec = self.norm(res_vec)
+        vit_vec = self.norm(vit_vec)
 
         a = self.alpha
         fused = F.normalize(a * vit_vec + (1 - a) * res_vec, dim=1)

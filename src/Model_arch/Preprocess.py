@@ -5,25 +5,35 @@ from pathlib import Path
 from typing import Optional, Callable, Dict, Any
 
 from mpmath.identification import transforms
+from numpy.ma.core import indices
 from torchvision.datasets.folder import IMG_EXTENSIONS
 from torchvision.io import read_video, read_image
 import torch
 from torch.utils.data import Dataset, DataLoader, random_split
 import torchvision.transforms.v2 as T
 from sklearn.model_selection import train_test_split
+import numpy as np
+from decord import VideoReader, gpu, cpu
 
 VIDEO_EXTENSIONS = {".mp4",".mov"}
 
-def load_video_tensor(path,frames,transformer=None):
-    video,_,info = read_video(path, output_format="TCHW")
+def load_video_tensor(path,frames,transformer=None,device="cuda"):
+    ctx = gpu(0) if device == "cuda" else cpu(0)  # chọn GPU hoặc CPU
+    vr = VideoReader(path, ctx=ctx)
 
-    indices = make_indices(video.shape[0],frames)
+    total = len(vr)
+    indices = make_indices(total,frames)
 
-    idx = torch.as_tensor(sorted(indices))
-    video = video.index_select(0,idx)
+    # lấy batch frame
+    video = vr.get_batch(indices).asnumpy()  # vẫn trả np.ndarray
+    video = torch.from_numpy(video).permute(0, 3, 1, 2)  # (T, C, H, W)
 
     if transformer is not None:
         video = transformer(video)
+
+    # chuyển tensor sang GPU nếu cần
+    if device == "cuda":
+        video = video.to("cuda", non_blocking=True)
 
     return video
 

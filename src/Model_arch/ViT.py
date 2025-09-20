@@ -91,7 +91,7 @@ class TemporalViT(nn.Module):
 
         # (5) Transformer Encoder theo thời gian
         z = self.encoder(tokens, src_key_padding_mask=enc_padding_mask)  # (B,T+1,D)
-        z = self.norm(z)
+        #z = self.norm(z)
 
         # (6) Tách cls và seq
         cls_out = z[:, 0, :]           # (B,D)
