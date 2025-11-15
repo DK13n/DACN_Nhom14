@@ -2,11 +2,29 @@
 
 Dự án cung cấp API backend bằng Python và một giao diện frontend trực quan giúp demo khả năng phân biệt khuôn mặt thật và khuôn mặt giả (spoof) từ ảnh hoặc video.Dùng để xác thực người dùng khi đăng nhập hoặc truy cập vào các dịch vụ nội bộ trong công ty, phòng lab hoặc trung tâm nghiên cứu.
 
-## ✨ Tính năng chính
-//...Đang cập nhật
+![Frontend Demo](pvcore/shared/Images/image.png)
 
+## ✨ Tính năng chính
+- **Huấn luyện**: Model Hybrid-CDCN-ReSVIT tự thiết kế (tự build backbone + head). và model Transfer learning với MobileNetV3 trích xuất đặc trưng.
+- **Frontend**: `fe/index.html` dùng JS “bridge” kết nối backend (CORS đã bật, chỉ cần gọi đúng các endpoint trên là chạy được).
+  
 ## 🛠 Công nghệ sử dụng
-//...Đang cập nhật
+- **Python 3.9+** – Ngôn ngữ chính xây dựng backend & training  
+- **FastAPI** – Xây dựng REST API phục vụ huấn luyện và suy luận  
+- **Uvicorn** – Web server chạy ứng dụng FastAPI  
+- **PyTorch** – Framework deep learning cho Hybrid-CDCN-ReSVIT & MobileNetV3  
+- **TorchVision** – Pretrained MobileNetV3 + transform ảnh  
+- **OpenCV / Pillow** – Đọc ảnh & tiền xử lý ảnh đầu vào  
+- **HTML / CSS / JavaScript** – Frontend đơn giản kết nối API  
+- **CORS Middleware** – Cho phép frontend giao tiếp backend  
+
+### **Hybrid-CDCN-ReSVIT (Tự build)**
+- **CDCN – Central Difference Convolution Network**  
+  Sử dụng các phép vi phân trung tâm để nhạy với texture và gradient.
+- **Vision Transformer (ViT) hoặc ReSViT – Residual Swin-based ViT**  
+  Khai thác cơ chế self-attention để học quan hệ toàn cục.
+- **Custom Fusion (CNN + ViT)**  
+  Kết hợp đặc trưng cục bộ (CNN) và toàn cục (ViT) thành một kiến trúc hybrid.
 
 ---
 ## 🧱 Cấu trúc thư mục
@@ -38,4 +56,20 @@ project_root/
 ```
 ---
 ## 📦 Cài đặt & chạy dự án
-//...Đang cập nhật
+1. **Tạo venv & cài deps**
+   ```bash
+   python -m venv .venv
+   # Windows PowerShell:
+   .\.venv\Scripts\Activate.ps1
+   # Linux/WSL:
+   uv sync
+   source .venv/bin/activate
+   ```
+2. **Chạy backend**
+   ```bash
+   uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload
+   ```
+
+3. **Mở frontend**
+   - Mở `fe/index.html` bằng **Live Server** (VS Code) → FE gọi `http://127.0.0.1:8000`.
+
