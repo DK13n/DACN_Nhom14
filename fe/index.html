@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>Face Liveness / Spoof Checker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    :root {
+      --bg: #0b1020;
+      --bg-soft: #141a2b;
+      --bg-softer: #1c2435;
+      --accent: #4f46e5;
+      --accent-soft: rgba(79, 70, 229, 0.1);
+      --accent-strong: #f97316;
+      --text: #f9fafb;
+      --text-soft: #9ca3af;
+      --border: #1f2937;
+      --danger: #ef4444;
+      --danger-soft: rgba(239, 68, 68, 0.12);
+      --success: #22c55e;
+      --success-soft: rgba(34, 197, 94, 0.12);
+      --radius-lg: 16px;
+      --radius-md: 12px;
+      --radius-sm: 8px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+                   "Segoe UI", sans-serif;
+    }
+
+    body {
+      background: radial-gradient(circle at top, #111827 0, #020617 55%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .app {
+      max-width: 1200px;
+      width: 100%;
+      background: linear-gradient(135deg, rgba(79, 70, 229, 0.12), rgba(8, 47, 73, 0.6));
+      border-radius: 24px;
+      padding: 1px;
+      box-shadow:
+          0 18px 40px rgba(0, 0, 0, 0.65),
+          0 0 0 1px rgba(148, 163, 184, 0.15);
+    }
+
+    .app-inner {
+      background: radial-gradient(circle at top left, rgba(148, 163, 184, 0.05), transparent 60%),
+                  radial-gradient(circle at bottom right, rgba(56, 189, 248, 0.05), transparent 55%),
+                  var(--bg);
+      border-radius: 23px;
+      padding: 24px 24px 20px;
+    }
+
+    .app-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+
+    .app-title-block {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .app-title {
+      font-size: 24px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .app-title span.icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 999px;
+      background: radial-gradient(circle at 30% 0, #facc15, transparent 55%),
+                  radial-gradient(circle at 70% 120%, #f97316, #dc2626);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      box-shadow: 0 0 0 1px rgba(248, 250, 252, 0.2);
+    }
+
+    .app-subtitle {
+      font-size: 14px;
+      color: var(--text-soft);
+    }
+
+    .app-badge {
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.5);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-soft);
+      background: radial-gradient(circle at top, rgba(148, 163, 184, 0.15), transparent 60%);
+    }
+
+    .app-badge-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: #22c55e;
+      box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.2);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .card {
+      background: radial-gradient(circle at top left, rgba(148, 163, 184, 0.12), transparent 60%),
+                  var(--bg-soft);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      border: 1px solid rgba(31, 41, 55, 0.8);
+      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.85);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-title-pill {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid rgba(75, 85, 99, 0.6);
+      color: var(--text-soft);
+    }
+
+    .card-subtitle {
+      font-size: 12px;
+      color: var(--text-soft);
+    }
+
+    .form-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    label {
+      font-size: 12px;
+      color: var(--text-soft);
+      margin-bottom: 4px;
+    }
+
+    select, input[type="file"] {
+      width: 100%;
+      padding: 9px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(55, 65, 81, 0.9);
+      background: rgba(15, 23, 42, 0.9);
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+    }
+
+    select:focus, input[type="file"]:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.7);
+    }
+
+    .radio-group {
+      display: inline-flex;
+      padding: 3px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(55, 65, 81, 0.9);
+      gap: 3px;
+      font-size: 12px;
+    }
+
+    .radio-pill {
+      padding: 6px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      user-select: none;
+      color: var(--text-soft);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .radio-pill.active {
+      background: linear-gradient(135deg, var(--accent), #0ea5e9);
+      color: #f9fafb;
+      box-shadow: 0 0 0 1px rgba(129, 140, 248, 0.8);
+    }
+
+    .radio-pill span.icon {
+      font-size: 14px;
+    }
+
+    .btn-primary {
+      width: 100%;
+      margin-top: 8px;
+      padding: 10px 12px;
+      border-radius: 999px;
+      border: none;
+      background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+      color: white;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 15px 32px rgba(79, 70, 229, 0.7);
+      transition: transform 0.07s ease, box-shadow 0.07s ease, filter 0.07s ease;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-1px);
+      filter: brightness(1.05);
+      box-shadow: 0 20px 40px rgba(79, 70, 229, 0.9);
+    }
+
+    .btn-primary:active:not(:disabled) {
+      transform: translateY(0);
+      box-shadow: 0 12px 26px rgba(79, 70, 229, 0.6);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: default;
+      box-shadow: none;
+    }
+
+    .btn-primary .spinner {
+      width: 16px;
+      height: 16px;
+      border-radius: 999px;
+      border: 2px solid rgba(248, 250, 252, 0.25);
+      border-top-color: #f9fafb;
+      animation: spin 0.6s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .preview-box {
+      border-radius: var(--radius-md);
+      border: 1px dashed rgba(75, 85, 99, 0.9);
+      padding: 10px;
+      min-height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(15, 23, 42, 0.7);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .preview-box img,
+    .preview-box video {
+      max-width: 100%;
+      max-height: 260px;
+      border-radius: 12px;
+      display: block;
+    }
+
+    .preview-placeholder {
+      font-size: 13px;
+      color: var(--text-soft);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .preview-placeholder span.icon {
+      font-size: 24px;
+    }
+
+    .tag {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid rgba(55, 65, 81, 0.7);
+      color: var(--text-soft);
+    }
+
+    .result-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .result-badge-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+
+    .result-label-live {
+      background: var(--success-soft);
+      border-color: var(--success);
+      color: var(--success);
+    }
+
+    .result-label-spoof {
+      background: var(--danger-soft);
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    .result-label-none {
+      background: rgba(15, 23, 42, 0.9);
+      border-color: rgba(55, 65, 81, 0.8);
+      color: var(--text-soft);
+    }
+
+    .metric-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .metric {
+      flex: 1 1 90px;
+      min-width: 90px;
+      background: rgba(15, 23, 42, 0.9);
+      border-radius: 10px;
+      padding: 8px 10px;
+      border: 1px solid rgba(31, 41, 55, 0.9);
+      font-size: 12px;
+    }
+
+    .metric-label {
+      color: var(--text-soft);
+      margin-bottom: 2px;
+    }
+
+    .metric-value {
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .hint {
+      font-size: 11px;
+      color: var(--text-soft);
+      margin-top: 6px;
+    }
+
+    .history {
+      margin-top: 10px;
+      font-size: 12px;
+    }
+
+    .history-item {
+      padding: 6px 8px;
+      border-radius: 10px;
+      border: 1px solid rgba(31, 41, 55, 0.9);
+      background: rgba(15, 23, 42, 0.85);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .history-left {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .history-line-main {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .history-line-main strong {
+      font-weight: 600;
+    }
+
+    .history-timestamp {
+      color: var(--text-soft);
+      font-size: 11px;
+    }
+
+    .pill {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(75, 85, 99, 0.9);
+      background: rgba(15, 23, 42, 0.8);
+    }
+
+    .pill-live {
+      border-color: var(--success);
+      color: var(--success);
+      background: var(--success-soft);
+    }
+
+    .pill-spoof {
+      border-color: var(--danger);
+      color: var(--danger);
+      background: var(--danger-soft);
+    }
+
+    .pill-image {
+      color: #60a5fa;
+      border-color: #60a5fa;
+      background: rgba(37, 99, 235, 0.16);
+    }
+
+    .pill-video {
+      color: #a855f7;
+      border-color: #a855f7;
+      background: rgba(147, 51, 234, 0.16);
+    }
+
+    .badge-model {
+      font-size: 11px;
+      color: var(--text-soft);
+    }
+
+    .text-muted {
+      color: var(--text-soft);
+    }
+
+    .text-danger {
+      color: var(--danger);
+    }
+
+    .text-success {
+      color: var(--success);
+    }
+
+    .alert {
+      margin-top: 8px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-size: 12px;
+      border: 1px solid rgba(55, 65, 81, 0.9);
+    }
+
+    .alert-warning {
+      border-color: #f97316;
+      background: rgba(248, 171, 96, 0.14);
+      color: #fed7aa;
+    }
+
+    .alert-error {
+      border-color: var(--danger);
+      background: rgba(239, 68, 68, 0.12);
+      color: #fecaca;
+    }
+
+    .alert-info {
+      border-color: #38bdf8;
+      background: rgba(56, 189, 248, 0.1);
+      color: #bae6fd;
+    }
+
+    .footer {
+      margin-top: 8px;
+      padding-top: 6px;
+      border-top: 1px solid rgba(31, 41, 55, 0.7);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--text-soft);
+    }
+
+    .footer span.highlight {
+      color: #e5e7eb;
+    }
+
+    @media (max-width: 900px) {
+      body {
+        padding: 12px;
+      }
+      .layout {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .app-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="app-inner">
+      <header class="app-header">
+        <div class="app-title-block">
+          <div class="app-title">
+            <span class="icon">👤</span>
+            <span>Face Liveness / Spoof Checker</span>
+          </div>
+          <div class="app-subtitle">
+            Kiểm tra nhanh ảnh hoặc video xem là <strong>mặt thật (live)</strong> hay <strong>giả mạo (spoof)</strong>.
+          </div>
+        </div>
+        <div class="app-badge">
+          <span class="app-badge-dot"></span>
+          Giao diện tĩnh • Sẵn sàng kết nối API
+        </div>
+      </header>
+
+      <div class="layout">
+        <!-- CỘT TRÁI: INPUT & PREVIEW -->
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">
+                Cấu hình kiểm tra
+                <span class="card-title-pill">Client-side UI</span>
+              </div>
+              <div class="card-subtitle">
+                Chọn model, loại input và upload ảnh / video để phân tích.
+              </div>
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <!-- Chọn model -->
+            <div>
+              <label for="modelSelect">1️⃣ Chọn model liveness</label>
+              <select id="modelSelect">
+                <option value="model_a">Model A - CNN</option>
+                <option value="model_b">Model B - Transformer</option>
+                <option value="model_c">Model C - Mobile Lightweight</option>
+              </select>
+            </div>
+
+            <!-- Chọn loại input -->
+            <div>
+              <label>2️⃣ Chọn loại input</label>
+              <div class="radio-group" id="inputTypeGroup">
+                <div class="radio-pill active" data-value="image">
+                  <span class="icon">📷</span> Ảnh
+                </div>
+                <div class="radio-pill" data-value="video">
+                  <span class="icon">🎥</span> Video
+                </div>
+              </div>
+            </div>
+
+            <!-- Input file -->
+            <div>
+              <label for="fileInput">3️⃣ Tải file lên</label>
+              <input id="fileInput" type="file" />
+              <div class="hint">
+                Ảnh hỗ trợ: <span class="tag">.jpg</span> <span class="tag">.jpeg</span> <span class="tag">.png</span> •
+                Video hỗ trợ: <span class="tag">.mp4</span> <span class="tag">.mov</span> <span class="tag">.avi</span>
+              </div>
+            </div>
+
+            <!-- Preview -->
+            <div>
+              <label>4️⃣ Xem preview</label>
+              <div class="preview-box" id="previewBox">
+                <div class="preview-placeholder">
+                  <span class="icon">✨</span>
+                  Chưa có file. Hãy chọn <strong>Ảnh</strong> hoặc <strong>Video</strong> và upload để xem trước.
+                </div>
+              </div>
+            </div>
+
+            <!-- Nút phân tích -->
+            <div>
+              <button class="btn-primary" id="analyzeButton">
+                <span id="analyzeButtonIcon">🚀</span>
+                <span id="analyzeButtonText">Phân tích</span>
+              </button>
+              <div id="messageBox"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- CỘT PHẢI: KẾT QUẢ & LỊCH SỬ -->
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">
+                Kết quả & báo cáo
+              </div>
+              <div class="card-subtitle">
+                Sau khi bạn kết nối API, phần này sẽ hiển thị kết quả thực tế từ server.
+              </div>
+            </div>
+          </div>
+
+          <!-- Kết quả hiện tại -->
+          <div id="resultArea">
+            <div class="result-badge result-label-none" id="resultBadge">
+              <span class="result-badge-dot"></span>
+              <span id="resultLabel">Chưa có kết quả</span>
+              <span id="resultScore" style="opacity:0.7;">• Score spoof: N/A</span>
+            </div>
+
+            <div class="metric-row">
+              <div class="metric">
+                <div class="metric-label">Model</div>
+                <div class="metric-value" id="metricModel">–</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Loại input</div>
+                <div class="metric-value" id="metricInputType">–</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Thời gian xử lý</div>
+                <div class="metric-value" id="metricDuration">–</div>
+              </div>
+            </div>
+
+            <div class="hint">
+              💡 Hiện tại giao diện đang dùng <span class="text-muted">mock data</span> để demo.  
+              Khi bạn có API, chỉ cần gọi `fetch()` ở trong file này và cập nhật lại `updateResultFromApi(data)`.
+            </div>
+          </div>
+
+          <!-- Lịch sử -->
+          <div class="history">
+            <div style="margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
+              <span><strong>🧾 Lịch sử (trong phiên)</strong></span>
+              <button id="clearHistoryBtn" style="
+                font-size: 11px;
+                padding: 4px 8px;
+                border-radius: 999px;
+                border: 1px solid rgba(75, 85, 99, 0.9);
+                background: rgba(15, 23, 42, 0.9);
+                color: var(--text-soft);
+                cursor: pointer;
+              ">Xoá lịch sử</button>
+            </div>
+            <div id="historyList" class="text-muted">
+              Chưa có bản ghi nào. Thử upload file và bấm <strong>Phân tích</strong>.
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <footer class="footer">
+        <div>
+          Giao diện tĩnh – <span class="highlight">bạn tự do kết nối bất kỳ API backend nào</span>.
+        </div>
+        <div>
+          Gợi ý: trả về JSON dạng:
+          <code>{"label": "live/spoof", "score": 0.87, "duration_ms": 123}</code>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <script>
+    // ====== STATE ĐƠN GIẢN TRÊN FRONTEND ======
+    const state = {
+      inputType: "image",       // "image" | "video"
+      file: null,               // File object
+      history: []               // danh sách bản ghi
+    };
+
+    // ====== DOM ELEMENTS ======
+    const inputTypeGroup = document.getElementById("inputTypeGroup");
+    const fileInput = document.getElementById("fileInput");
+    const previewBox = document.getElementById("previewBox");
+    const analyzeButton = document.getElementById("analyzeButton");
+    const analyzeButtonText = document.getElementById("analyzeButtonText");
+    const analyzeButtonIcon = document.getElementById("analyzeButtonIcon");
+    const messageBox = document.getElementById("messageBox");
+    const resultBadge = document.getElementById("resultBadge");
+    const resultLabel = document.getElementById("resultLabel");
+    const resultScore = document.getElementById("resultScore");
+    const metricModel = document.getElementById("metricModel");
+    const metricInputType = document.getElementById("metricInputType");
+    const metricDuration = document.getElementById("metricDuration");
+    const historyList = document.getElementById("historyList");
+    const clearHistoryBtn = document.getElementById("clearHistoryBtn");
+    const modelSelect = document.getElementById("modelSelect");
+
+    // ====== EVENT: CHỌN LOẠI INPUT (ẢNH / VIDEO) ======
+    inputTypeGroup.addEventListener("click", (e) => {
+      const pill = e.target.closest(".radio-pill");
+      if (!pill) return;
+      const value = pill.getAttribute("data-value");
+      if (!value) return;
+
+      state.inputType = value;
+
+      // Toggle active
+      inputTypeGroup.querySelectorAll(".radio-pill").forEach((p) => p.classList.remove("active"));
+      pill.classList.add("active");
+
+      // Reset file input & preview
+      fileInput.value = "";
+      state.file = null;
+      renderPreviewPlaceholder();
+      showMessage("Đã chuyển sang chế độ " + (value === "image" ? "Ảnh" : "Video") + ".", "info");
+    });
+
+    // ====== EVENT: CHỌN FILE ======
+    fileInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) {
+        state.file = null;
+        renderPreviewPlaceholder();
+        return;
+      }
+      state.file = file;
+      renderPreview(file, state.inputType);
+    });
+
+    function renderPreviewPlaceholder() {
+      previewBox.innerHTML = `
+        <div class="preview-placeholder">
+          <span class="icon">${state.inputType === "image" ? "📷" : "🎥"}</span>
+          Chưa có file. Hãy upload một ${state.inputType === "image" ? "ảnh" : "video"} để xem trước.
+        </div>
+      `;
+    }
+
+    function renderPreview(file, type) {
+      const url = URL.createObjectURL(file);
+      previewBox.innerHTML = "";
+      if (type === "image") {
+        const img = document.createElement("img");
+        img.src = url;
+        img.alt = "Preview Image";
+        previewBox.appendChild(img);
+      } else {
+        const video = document.createElement("video");
+        video.src = url;
+        video.controls = true;
+        video.loop = true;
+        video.muted = true;
+        previewBox.appendChild(video);
+      }
+    }
+
+    // ====== HIỂN THỊ MESSAGE NHỎ BÊN DƯỚI NÚT ======
+    function showMessage(text, type = "info") {
+      const classMap = {
+        info: "alert alert-info",
+        warning: "alert alert-warning",
+        error: "alert alert-error"
+      };
+      messageBox.innerHTML = `<div class="${classMap[type]}">${text}</div>`;
+    }
+
+    // ====== XỬ LÝ KHI BẤM NÚT PHÂN TÍCH ======
+    analyzeButton.addEventListener("click", async () => {
+      if (!state.file) {
+        showMessage("Vui lòng chọn một file trước khi phân tích.", "warning");
+        return;
+      }
+
+      // Bật trạng thái loading
+      setLoading(true);
+      showMessage("Đang gửi dữ liệu (demo mock). Sau này bạn sẽ gọi API thực tại đây.", "info");
+
+      const start = performance.now();
+
+      try {
+        // ===========================================================
+        // 1) NƠI BẠN SẼ GỌI API THẬT SAU NÀY
+        // ===========================================================
+        //
+        // Ví dụ (khi có API):
+        //
+        // const formData = new FormData();
+        // formData.append("file", state.file);
+        // formData.append("model", modelSelect.value);
+        // formData.append("type", state.inputType);
+        //
+        // const response = await fetch("https://your-api-endpoint/face-liveness", {
+        //   method: "POST",
+        //   body: formData
+        // });
+        //
+        // const data = await response.json();
+        //
+        // // data nên có dạng:
+        // // {
+        // //   label: "live" | "spoof",
+        // //   score: 0.87,
+        // //   duration_ms: 123
+        // // }
+        //
+        // updateResultFromApi(data);
+        //
+        // ===========================================================
+        // HIỆN TẠI: MOCK DATA ĐỂ BẠN THẤY GIAO DIỆN
+        // ===========================================================
+        
+        await sleep(600 + Math.random() * 800); // mô phỏng trễ mạng
+
+        const mockScore = Math.random(); // random score spoof
+        const mockLabel = mockScore >= 0.5 ? "spoof" : "live";
+
+        const durationMs = Math.round(performance.now() - start);
+
+        const mockData = {
+          label: mockLabel,
+          score: mockScore,
+          duration_ms: durationMs
+        };
+
+        updateResultFromApi(mockData);
+        addHistoryRecord(mockData);
+
+        showMessage("Đây là kết quả demo (mock). Khi có API thật, chỉ cần thay phần mock này.", "info");
+      } catch (err) {
+        console.error(err);
+        showMessage("Đã xảy ra lỗi trong quá trình xử lý (client).", "error");
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    function setLoading(isLoading) {
+      if (isLoading) {
+        analyzeButton.disabled = true;
+        analyzeButtonIcon.innerHTML = "";
+        analyzeButtonIcon.classList.add("spinner");
+        analyzeButtonText.textContent = "Đang phân tích...";
+      } else {
+        analyzeButton.disabled = false;
+        analyzeButtonIcon.classList.remove("spinner");
+        analyzeButtonIcon.textContent = "🚀";
+        analyzeButtonText.textContent = "Phân tích";
+      }
+    }
+
+    function sleep(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    // ====== CẬP NHẬT UI TỪ DATA API ======
+    function updateResultFromApi(data) {
+      // data: {label: "live"|"spoof", score: number, duration_ms: number}
+      const label = (data.label || "unknown").toLowerCase();
+      const score = typeof data.score === "number" ? data.score : null;
+      const durationMs = typeof data.duration_ms === "number" ? data.duration_ms : null;
+
+      // Badge
+      resultBadge.classList.remove("result-label-live", "result-label-spoof", "result-label-none");
+      if (label === "live") {
+        resultBadge.classList.add("result-label-live");
+        resultLabel.textContent = "THẬT (LIVE)";
+      } else if (label === "spoof") {
+        resultBadge.classList.add("result-label-spoof");
+        resultLabel.textContent = "GIẢ MẠO (SPOOF)";
+      } else {
+        resultBadge.classList.add("result-label-none");
+        resultLabel.textContent = "Không xác định";
+      }
+
+      if (score !== null) {
+        resultScore.textContent = `• Score spoof: ${score.toFixed(3)}`;
+      } else {
+        resultScore.textContent = "• Score spoof: N/A";
+      }
+
+      // Metrics
+      metricModel.textContent = modelSelect.options[modelSelect.selectedIndex].text;
+      metricInputType.textContent = state.inputType === "image" ? "Ảnh" : "Video";
+      metricDuration.textContent = durationMs !== null ? `${durationMs} ms` : "–";
+    }
+
+    // ====== LỊCH SỬ ======
+    function addHistoryRecord(data) {
+      const label = (data.label || "unknown").toLowerCase();
+      const score = typeof data.score === "number" ? data.score : null;
+      const durationMs = typeof data.duration_ms === "number" ? data.duration_ms : null;
+
+      const now = new Date();
+      const timestamp = now.toLocaleString("vi-VN");
+
+      const record = {
+        label,
+        score,
+        durationMs,
+        timestamp,
+        modelText: modelSelect.options[modelSelect.selectedIndex].text,
+        inputType: state.inputType
+      };
+
+      state.history.unshift(record);
+      if (state.history.length > 20) {
+        state.history.pop();
+      }
+      renderHistory();
+    }
+
+    function renderHistory() {
+      if (state.history.length === 0) {
+        historyList.innerHTML = `Chưa có bản ghi nào. Thử upload file và bấm <strong>Phân tích</strong>.`;
+        return;
+      }
+
+      historyList.innerHTML = "";
+      state.history.forEach((item, idx) => {
+        const container = document.createElement("div");
+        container.className = "history-item";
+
+        const left = document.createElement("div");
+        left.className = "history-left";
+
+        const main = document.createElement("div");
+        main.className = "history-line-main";
+
+        const typePill = document.createElement("span");
+        typePill.className = "pill " + (item.inputType === "image" ? "pill-image" : "pill-video");
+        typePill.textContent = item.inputType === "image" ? "Ảnh" : "Video";
+
+        const resultPill = document.createElement("span");
+        if (item.label === "live") {
+          resultPill.className = "pill pill-live";
+          resultPill.textContent = "LIVE";
+        } else if (item.label === "spoof") {
+          resultPill.className = "pill pill-spoof";
+          resultPill.textContent = "SPOOF";
+        } else {
+          resultPill.className = "pill";
+          resultPill.textContent = "Unknown";
+        }
+
+        const scoreSpan = document.createElement("span");
+        scoreSpan.innerHTML = `<strong>Score:</strong> ${item.score !== null ? item.score.toFixed(3) : "N/A"}`;
+
+        const modelSpan = document.createElement("span");
+        modelSpan.className = "badge-model";
+        modelSpan.textContent = item.modelText;
+
+        main.appendChild(typePill);
+        main.appendChild(resultPill);
+        main.appendChild(scoreSpan);
+        main.appendChild(modelSpan);
+
+        const ts = document.createElement("div");
+        ts.className = "history-timestamp";
+        ts.textContent = item.timestamp + (item.durationMs !== null ? ` • ${item.durationMs} ms` : "");
+
+        left.appendChild(main);
+        left.appendChild(ts);
+
+        container.appendChild(left);
+
+        historyList.appendChild(container);
+      });
+    }
+
+    // Xoá lịch sử
+    clearHistoryBtn.addEventListener("click", () => {
+      state.history = [];
+      renderHistory();
+    });
+
+    // Lần đầu load
+    renderPreviewPlaceholder();
+  </script>
+</body>
+</html>
