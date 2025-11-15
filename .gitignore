@@ -1,5 +1,10 @@
 .venv/
 venv/
+pvcore/models/.venv
+
 __pycache__/
 *.pyc
 uv.lock
+
+pvcore/models/weights/Hybrid-CDCN-ResViT.pth
+pvcore/models/weights/MobileNetV3.pth
