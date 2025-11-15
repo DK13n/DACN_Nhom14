@@ -548,7 +548,7 @@
         </div>
         <div class="app-badge">
           <span class="app-badge-dot"></span>
-          Giao diện tĩnh • Sẵn sàng kết nối API
+          Frontend đã sẵn sàng kết nối FastAPI
         </div>
       </header>
 
@@ -570,17 +570,17 @@
           <div class="form-grid">
             <!-- Chọn model -->
             <div>
-              <label for="modelSelect">1️⃣ Chọn model liveness</label>
+              <label for="modelSelect">1️ Chọn model liveness</label>
               <select id="modelSelect">
-                <option value="model_a">Model A - CNN</option>
-                <option value="model_b">Model B - Transformer</option>
-                <option value="model_c">Model C - Mobile Lightweight</option>
+                <!-- value = VisionTriX để backend dùng; text = Hybrid-CDCN-ResViT để hiển thị -->
+                <option value="VisionTriX">Hybrid-CDCN-ResViT</option>
+                <option value="MobileNetV3">MobileNetV3</option>
               </select>
             </div>
 
             <!-- Chọn loại input -->
             <div>
-              <label>2️⃣ Chọn loại input</label>
+              <label>2️ Chọn loại input</label>
               <div class="radio-group" id="inputTypeGroup">
                 <div class="radio-pill active" data-value="image">
                   <span class="icon">📷</span> Ảnh
@@ -593,7 +593,7 @@
 
             <!-- Input file -->
             <div>
-              <label for="fileInput">3️⃣ Tải file lên</label>
+              <label for="fileInput">3️ Tải file lên</label>
               <input id="fileInput" type="file" />
               <div class="hint">
                 Ảnh hỗ trợ: <span class="tag">.jpg</span> <span class="tag">.jpeg</span> <span class="tag">.png</span> •
@@ -603,7 +603,7 @@
 
             <!-- Preview -->
             <div>
-              <label>4️⃣ Xem preview</label>
+              <label>4️ Xem preview</label>
               <div class="preview-box" id="previewBox">
                 <div class="preview-placeholder">
                   <span class="icon">✨</span>
@@ -631,7 +631,7 @@
                 Kết quả & báo cáo
               </div>
               <div class="card-subtitle">
-                Sau khi bạn kết nối API, phần này sẽ hiển thị kết quả thực tế từ server.
+                Kết quả sẽ được lấy trực tiếp từ API FastAPI của bạn.
               </div>
             </div>
           </div>
@@ -660,15 +660,15 @@
             </div>
 
             <div class="hint">
-              💡 Hiện tại giao diện đang dùng <span class="text-muted">mock data</span> để demo.  
-              Khi bạn có API, chỉ cần gọi `fetch()` ở trong file này và cập nhật lại `updateResultFromApi(data)`.
+              💡 Backend trả về: <code>{"status": "success", "type": "image|video", "model": "...", "class_name": "REAL|FAKE"}</code>  
+              FE sẽ map <code>REAL → live</code>, <code>FAKE → spoof</code>.
             </div>
           </div>
 
-          <!-- Lịch sử -->
+          <!-- Lịch sử (chỉ kết quả lần trước) -->
           <div class="history">
             <div style="margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
-              <span><strong>🧾 Lịch sử (trong phiên)</strong></span>
+              <span><strong>🧾 Kết quả lần trước</strong></span>
               <button id="clearHistoryBtn" style="
                 font-size: 11px;
                 padding: 4px 8px;
@@ -677,10 +677,10 @@
                 background: rgba(15, 23, 42, 0.9);
                 color: var(--text-soft);
                 cursor: pointer;
-              ">Xoá lịch sử</button>
+              ">Xoá</button>
             </div>
             <div id="historyList" class="text-muted">
-              Chưa có bản ghi nào. Thử upload file và bấm <strong>Phân tích</strong>.
+              Chưa có bản ghi nào trước đó.
             </div>
           </div>
         </section>
@@ -688,22 +688,26 @@
 
       <footer class="footer">
         <div>
-          Giao diện tĩnh – <span class="highlight">bạn tự do kết nối bất kỳ API backend nào</span>.
+          Giao diện tĩnh – <span class="highlight">đã nối sẵn API FastAPI (image / video predict)</span>.
         </div>
         <div>
-          Gợi ý: trả về JSON dạng:
-          <code>{"label": "live/spoof", "score": 0.87, "duration_ms": 123}</code>
+          Backend: <code>POST /predict/image</code> & <code>POST /predict/video</code>
         </div>
       </footer>
     </div>
   </div>
 
-  <script>
-    // ====== STATE ĐƠN GIẢN TRÊN FRONTEND ======
+    <script>
+    // ================== CẤU HÌNH BACKEND ==================
+    const API_BASE = "http://127.0.0.1:8000";
+
+    // ====== STATE ======
     const state = {
       inputType: "image",       // "image" | "video"
       file: null,               // File object
-      history: []               // danh sách bản ghi
+      history: [],              // chỉ chứa tối đa 1 record (kết quả trước đó)
+      currentRecord: null,      // kết quả hiện tại
+      phase: "ready"            // "ready" | "running" | "need_continue"
     };
 
     // ====== DOM ELEMENTS ======
@@ -733,11 +737,9 @@
 
       state.inputType = value;
 
-      // Toggle active
       inputTypeGroup.querySelectorAll(".radio-pill").forEach((p) => p.classList.remove("active"));
       pill.classList.add("active");
 
-      // Reset file input & preview
       fileInput.value = "";
       state.file = null;
       renderPreviewPlaceholder();
@@ -783,7 +785,7 @@
       }
     }
 
-    // ====== HIỂN THỊ MESSAGE NHỎ BÊN DƯỚI NÚT ======
+    // ====== HIỂN THỊ MESSAGE ======
     function showMessage(text, type = "info") {
       const classMap = {
         info: "alert alert-info",
@@ -793,71 +795,90 @@
       messageBox.innerHTML = `<div class="${classMap[type]}">${text}</div>`;
     }
 
-    // ====== XỬ LÝ KHI BẤM NÚT PHÂN TÍCH ======
+    // ====== NÚT PHÂN TÍCH / TIẾP TỤC ======
     analyzeButton.addEventListener("click", async () => {
+      // Nếu đang ở phase "need_continue" thì click này chỉ để CHO PHÉP chạy testcase tiếp theo
+      if (state.phase === "need_continue") {
+        state.phase = "ready";
+        analyzeButtonIcon.textContent = "🚀";
+        analyzeButtonText.textContent = "Phân tích";
+        showMessage("Bạn có thể chọn testcase tiếp theo rồi bấm Phân tích để chạy.", "info");
+        return;
+      }
+
+      // Nếu đang chạy thì ignore (dù nút đã disable rồi)
+      if (state.phase === "running") {
+        return;
+      }
+
+      // phase === "ready" → chạy inference
       if (!state.file) {
         showMessage("Vui lòng chọn một file trước khi phân tích.", "warning");
         return;
       }
 
-      // Bật trạng thái loading
+      state.phase = "running";
       setLoading(true);
-      showMessage("Đang gửi dữ liệu (demo mock). Sau này bạn sẽ gọi API thực tại đây.", "info");
+      showMessage("Đang gửi dữ liệu lên server...", "info");
 
       const start = performance.now();
 
       try {
-        // ===========================================================
-        // 1) NƠI BẠN SẼ GỌI API THẬT SAU NÀY
-        // ===========================================================
-        //
-        // Ví dụ (khi có API):
-        //
-        // const formData = new FormData();
-        // formData.append("file", state.file);
-        // formData.append("model", modelSelect.value);
-        // formData.append("type", state.inputType);
-        //
-        // const response = await fetch("https://your-api-endpoint/face-liveness", {
-        //   method: "POST",
-        //   body: formData
-        // });
-        //
-        // const data = await response.json();
-        //
-        // // data nên có dạng:
-        // // {
-        // //   label: "live" | "spoof",
-        // //   score: 0.87,
-        // //   duration_ms: 123
-        // // }
-        //
-        // updateResultFromApi(data);
-        //
-        // ===========================================================
-        // HIỆN TẠI: MOCK DATA ĐỂ BẠN THẤY GIAO DIỆN
-        // ===========================================================
-        
-        await sleep(600 + Math.random() * 800); // mô phỏng trễ mạng
+        const endpoint =
+          state.inputType === "image" ? "/predict/image" : "/predict/video";
 
-        const mockScore = Math.random(); // random score spoof
-        const mockLabel = mockScore >= 0.5 ? "spoof" : "live";
+        const formData = new FormData();
+        formData.append("file", state.file);
+        formData.append("model_name", modelSelect.value);
+
+        const response = await fetch(`${API_BASE}${endpoint}`, {
+          method: "POST",
+          body: formData,
+        });
+
+        let raw;
+        try {
+          raw = await response.json();
+        } catch (parseErr) {
+          console.error("Parse JSON error:", parseErr);
+          showMessage("Không đọc được JSON từ server.", "error");
+          return;
+        }
+
+        if (!response.ok || raw.status !== "success") {
+          const msg = raw && raw.error ? raw.error : "Server trả về lỗi không xác định.";
+          showMessage("Lỗi từ server: " + msg, "error");
+          return;
+        }
+
+        const className = raw.class_name; // "REAL" | "FAKE"
+        const label =
+          className === "REAL"
+            ? "live"
+            : className === "FAKE"
+            ? "spoof"
+            : "unknown";
 
         const durationMs = Math.round(performance.now() - start);
 
-        const mockData = {
-          label: mockLabel,
-          score: mockScore,
-          duration_ms: durationMs
+        const normalized = {
+          label: label,
+          score: null,
+          duration_ms: durationMs,
         };
 
-        updateResultFromApi(mockData);
-        addHistoryRecord(mockData);
+        // Cập nhật lịch sử: chỉ giữ KẾT QUẢ LẦN TRƯỚC
+        addHistoryRecord(normalized);
 
-        showMessage("Đây là kết quả demo (mock). Khi có API thật, chỉ cần thay phần mock này.", "info");
+        // Cập nhật UI cho kết quả hiện tại
+        updateResultFromApi(normalized);
+
+        // Sau khi xong → chuyển sang phase "need_continue"
+        state.phase = "need_continue";
+        showMessage("Đã nhận kết quả. Nhấn 'Tiếp tục' để sẵn sàng cho testcase tiếp theo.", "info");
       } catch (err) {
         console.error(err);
-        showMessage("Đã xảy ra lỗi trong quá trình xử lý (client).", "error");
+        showMessage("Đã xảy ra lỗi trong quá trình gọi API.", "error");
       } finally {
         setLoading(false);
       }
@@ -872,23 +893,23 @@
       } else {
         analyzeButton.disabled = false;
         analyzeButtonIcon.classList.remove("spinner");
-        analyzeButtonIcon.textContent = "🚀";
-        analyzeButtonText.textContent = "Phân tích";
+
+        if (state.phase === "need_continue") {
+          analyzeButtonIcon.textContent = "⏭";
+          analyzeButtonText.textContent = "Tiếp tục";
+        } else {
+          analyzeButtonIcon.textContent = "🚀";
+          analyzeButtonText.textContent = "Phân tích";
+        }
       }
     }
 
-    function sleep(ms) {
-      return new Promise((resolve) => setTimeout(resolve, ms));
-    }
-
-    // ====== CẬP NHẬT UI TỪ DATA API ======
+    // ====== CẬP NHẬT KẾT QUẢ HIỆN TẠI ======
     function updateResultFromApi(data) {
-      // data: {label: "live"|"spoof", score: number, duration_ms: number}
       const label = (data.label || "unknown").toLowerCase();
       const score = typeof data.score === "number" ? data.score : null;
       const durationMs = typeof data.duration_ms === "number" ? data.duration_ms : null;
 
-      // Badge
       resultBadge.classList.remove("result-label-live", "result-label-spoof", "result-label-none");
       if (label === "live") {
         resultBadge.classList.add("result-label-live");
@@ -907,13 +928,13 @@
         resultScore.textContent = "• Score spoof: N/A";
       }
 
-      // Metrics
-      metricModel.textContent = modelSelect.options[modelSelect.selectedIndex].text;
+      const modelText = modelSelect.options[modelSelect.selectedIndex].text;
+      metricModel.textContent = modelText;
       metricInputType.textContent = state.inputType === "image" ? "Ảnh" : "Video";
       metricDuration.textContent = durationMs !== null ? `${durationMs} ms` : "–";
     }
 
-    // ====== LỊCH SỬ ======
+    // ====== LỊCH SỬ: CHỈ LẦN TRƯỚC ======
     function addHistoryRecord(data) {
       const label = (data.label || "unknown").toLowerCase();
       const score = typeof data.score === "number" ? data.score : null;
@@ -931,79 +952,79 @@
         inputType: state.inputType
       };
 
-      state.history.unshift(record);
-      if (state.history.length > 20) {
-        state.history.pop();
+      if (state.currentRecord) {
+        state.history = [state.currentRecord];
       }
+
+      state.currentRecord = record;
+
       renderHistory();
     }
 
     function renderHistory() {
-      if (state.history.length === 0) {
-        historyList.innerHTML = `Chưa có bản ghi nào. Thử upload file và bấm <strong>Phân tích</strong>.`;
+      if (!state.history.length) {
+        historyList.innerHTML = `Chưa có bản ghi nào trước đó.`;
         return;
       }
 
+      const item = state.history[0];
       historyList.innerHTML = "";
-      state.history.forEach((item, idx) => {
-        const container = document.createElement("div");
-        container.className = "history-item";
 
-        const left = document.createElement("div");
-        left.className = "history-left";
+      const container = document.createElement("div");
+      container.className = "history-item";
 
-        const main = document.createElement("div");
-        main.className = "history-line-main";
+      const left = document.createElement("div");
+      left.className = "history-left";
 
-        const typePill = document.createElement("span");
-        typePill.className = "pill " + (item.inputType === "image" ? "pill-image" : "pill-video");
-        typePill.textContent = item.inputType === "image" ? "Ảnh" : "Video";
+      const main = document.createElement("div");
+      main.className = "history-line-main";
 
-        const resultPill = document.createElement("span");
-        if (item.label === "live") {
-          resultPill.className = "pill pill-live";
-          resultPill.textContent = "LIVE";
-        } else if (item.label === "spoof") {
-          resultPill.className = "pill pill-spoof";
-          resultPill.textContent = "SPOOF";
-        } else {
-          resultPill.className = "pill";
-          resultPill.textContent = "Unknown";
-        }
+      const typePill = document.createElement("span");
+      typePill.className = "pill " + (item.inputType === "image" ? "pill-image" : "pill-video");
+      typePill.textContent = item.inputType === "image" ? "Ảnh" : "Video";
 
-        const scoreSpan = document.createElement("span");
-        scoreSpan.innerHTML = `<strong>Score:</strong> ${item.score !== null ? item.score.toFixed(3) : "N/A"}`;
+      const resultPill = document.createElement("span");
+      if (item.label === "live") {
+        resultPill.className = "pill pill-live";
+        resultPill.textContent = "LIVE";
+      } else if (item.label === "spoof") {
+        resultPill.className = "pill pill-spoof";
+        resultPill.textContent = "SPOOF";
+      } else {
+        resultPill.className = "pill";
+        resultPill.textContent = "Unknown";
+      }
 
-        const modelSpan = document.createElement("span");
-        modelSpan.className = "badge-model";
-        modelSpan.textContent = item.modelText;
+      const scoreSpan = document.createElement("span");
+      scoreSpan.innerHTML = `<strong>Score:</strong> ${
+        item.score !== null ? item.score.toFixed(3) : "N/A"
+      }`;
 
-        main.appendChild(typePill);
-        main.appendChild(resultPill);
-        main.appendChild(scoreSpan);
-        main.appendChild(modelSpan);
+      const modelSpan = document.createElement("span");
+      modelSpan.className = "badge-model";
+      modelSpan.textContent = item.modelText;
 
-        const ts = document.createElement("div");
-        ts.className = "history-timestamp";
-        ts.textContent = item.timestamp + (item.durationMs !== null ? ` • ${item.durationMs} ms` : "");
+      main.appendChild(typePill);
+      main.appendChild(resultPill);
+      main.appendChild(scoreSpan);
+      main.appendChild(modelSpan);
 
-        left.appendChild(main);
-        left.appendChild(ts);
+      const ts = document.createElement("div");
+      ts.className = "history-timestamp";
+      ts.textContent =
+        item.timestamp + (item.durationMs !== null ? ` • ${item.durationMs} ms` : "");
 
-        container.appendChild(left);
+      left.appendChild(main);
+      left.appendChild(ts);
 
-        historyList.appendChild(container);
-      });
+      container.appendChild(left);
+      historyList.appendChild(container);
     }
 
-    // Xoá lịch sử
     clearHistoryBtn.addEventListener("click", () => {
       state.history = [];
       renderHistory();
     });
 
-    // Lần đầu load
     renderPreviewPlaceholder();
   </script>
-</body>
-</html>
