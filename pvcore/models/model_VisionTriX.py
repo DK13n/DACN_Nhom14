@@ -166,7 +166,7 @@ class CDRes_ViT(nn.Module):
         logits = self.classifier(combined_features)
         return logits
     
-    
+     
 
 def get_model( weights_path=None):
 
@@ -195,6 +195,7 @@ def get_model( weights_path=None):
     print("✅ Model loaded successfully!")
 
     return model
+
 
 if __name__ == "__main__":
     model = get_model()
