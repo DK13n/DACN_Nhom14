@@ -3,6 +3,11 @@ venv/
 pvcore/models/.venv
 
 __pycache__/
+pvcore/__pycache__/
+pvcore/shared/__pycache__
+pvcore/api/__pycache__/
+pvcore/shared/utils/__pycache__/
+*.pyo
 *.pyc
 uv.lock
 
