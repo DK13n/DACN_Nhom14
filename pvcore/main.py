@@ -8,16 +8,16 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import torch
 
-from pvcore.api.routers import app 
 path_MobileNetV3 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "weights", "MobileNetV3.pth")
 path_VisionTriX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "weights", "Hybrid-CDCN-ResViT.pth")
 
 if os.path.exists(path_MobileNetV3) and os.path.exists(path_VisionTriX):
-    print("✅ Tất cả model đã tồn tại, bỏ qua bước build_model.")
+    print("Tất cả model đã tồn tại, bỏ qua bước build_model.")
 else: 
     from pvcore.models.down_model import build_model
     build_model()
 
+from pvcore.api.routers import app 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],      
