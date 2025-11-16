@@ -56,20 +56,24 @@ project_root/
 ```
 ---
 ## 📦 Cài đặt & chạy dự án
-1. **Tạo venv & cài deps**
+
+ **Đầu tiên clone dự án về local** : `git clone https://github.com/DK13n/DACN_Nhom14.git`
+
+ Cách 1. **Tạo venv & cài deps**
    ```bash
-   python -m venv .venv
-   # Windows PowerShell:
-   .\.venv\Scripts\Activate.ps1
-   # Linux/WSL:
-   uv sync
-   source .venv/bin/activate
+   # Windows PowerShell ,Linux/WSL:
+   # Nếu bạn chua ở trong thư mục DACN_Nhom14
+   cd DACN_Nhom14
+   source Scripts/run_be.sh  
    ```
-2. **Chạy backend**
+  -Sau đó mở `fe/index.html` bằng **Live Server** (VS Code) → FE gọi `http://127.0.0.1:8000`.
+
+ cách 2 : Chạy be và fe.
+  **Chạy backend**
    ```bash
    uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload
    ```
-
-3. **Mở frontend**
+  **Mở frontend**
    - Mở `fe/index.html` bằng **Live Server** (VS Code) → FE gọi `http://127.0.0.1:8000`.
+
 
