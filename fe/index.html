@@ -698,333 +698,437 @@
   </div>
 
     <script>
-    // ================== CẤU HÌNH BACKEND ==================
-    const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = "http://127.0.0.1:8000";
+const APP_STATE_KEY = "dacn_app_state_v1";
+const PREVIEW_KEY = "dacn_preview_img_v1";
+const DB_NAME = "dacn_files_db";
+const STORE_NAME = "files";
+const IMAGE_SAVE_THRESHOLD = 2 * 1024 * 1024; // 2MB
 
-    // ====== STATE ======
-    const state = {
-      inputType: "image",       // "image" | "video"
-      file: null,               // File object
-      history: [],              // chỉ chứa tối đa 1 record (kết quả trước đó)
-      currentRecord: null,      // kết quả hiện tại
-      phase: "ready"            // "ready" | "running" | "need_continue"
+// ===== state =====
+const state = {
+  inputType: "image",
+  fileMeta: null,    // { id, name, size, type } persisted
+  fileBlob: null,    // in-memory Blob for submission / preview
+  history: [],       // array of records (recent)
+  currentRecord: null,
+  phase: "ready"     // ready | running | need_continue
+};
+
+// ===== DOM =====
+const inputTypeGroup = document.getElementById("inputTypeGroup");
+const fileInput = document.getElementById("fileInput");
+const previewBox = document.getElementById("previewBox");
+const analyzeButton = document.getElementById("analyzeButton");
+const analyzeButtonText = document.getElementById("analyzeButtonText");
+const analyzeButtonIcon = document.getElementById("analyzeButtonIcon");
+const messageBox = document.getElementById("messageBox");
+const resultBadge = document.getElementById("resultBadge");
+const resultLabel = document.getElementById("resultLabel");
+const resultScore = document.getElementById("resultScore");
+const metricModel = document.getElementById("metricModel");
+const metricInputType = document.getElementById("metricInputType");
+const metricDuration = document.getElementById("metricDuration");
+const historyList = document.getElementById("historyList");
+const clearHistoryBtn = document.getElementById("clearHistoryBtn");
+const modelSelect = document.getElementById("modelSelect");
+
+// ===== IndexedDB helper =====
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: "id" });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbPut(obj) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    const store = tx.objectStore(STORE_NAME);
+    const r = store.put(obj);
+    r.onsuccess = () => resolve(obj.id);
+    r.onerror = () => reject(r.error);
+  });
+}
+async function idbGet(id) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const store = tx.objectStore(STORE_NAME);
+    const r = store.get(id);
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  });
+}
+async function idbDelete(id) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    const store = tx.objectStore(STORE_NAME);
+    const r = store.delete(id);
+    r.onsuccess = () => resolve();
+    r.onerror = () => reject(r.error);
+  });
+}
+
+// ===== persistence =====
+function saveAppState() {
+  try {
+    const toSave = {
+      inputType: state.inputType,
+      model: modelSelect.value,
+      phase: state.phase,
+      fileMeta: state.fileMeta,
+      history: state.history.slice(-50), // keep recent 50
+      currentRecord: state.currentRecord
+    };
+    localStorage.setItem(APP_STATE_KEY, JSON.stringify(toSave));
+  } catch (e) {
+    console.warn("saveAppState failed", e);
+  }
+}
+async function loadAppState() {
+  try {
+    const raw = localStorage.getItem(APP_STATE_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    if (s.inputType) {
+      state.inputType = s.inputType;
+      inputTypeGroup.querySelectorAll(".radio-pill").forEach(p => p.classList.remove("active"));
+      const pill = inputTypeGroup.querySelector(`.radio-pill[data-value="${s.inputType}"]`);
+      if (pill) pill.classList.add("active");
+    }
+    if (s.model) modelSelect.value = s.model;
+    state.phase = s.phase || "ready";
+    state.history = s.history || [];
+    state.currentRecord = s.currentRecord || null;
+    state.fileMeta = s.fileMeta || null;
+
+    if (state.currentRecord) updateResultFromApi(state.currentRecord);
+    renderHistory();
+
+    // restore blob if fileMeta present
+    if (state.fileMeta && state.fileMeta.id) {
+      const rec = await idbGet(state.fileMeta.id);
+      if (rec && rec.blob) {
+        state.fileBlob = rec.blob;
+        renderBlobPreview(rec.blob, rec.name, state.inputType);
+      }
+    } else {
+      // try small preview from localStorage
+      tryRestorePreviewImage();
+    }
+  } catch (e) {
+    console.warn("loadAppState error", e);
+  } finally {
+    setLoading(false);
+  }
+}
+
+// small image preview saved as dataURL
+function trySavePreviewImage(file) {
+  if (!file || state.inputType !== "image" || file.size > IMAGE_SAVE_THRESHOLD) {
+    localStorage.removeItem(PREVIEW_KEY);
+    return;
+  }
+  const r = new FileReader();
+  r.onload = () => {
+    try { localStorage.setItem(PREVIEW_KEY, r.result); } catch (e) { /* ignore */ }
+  };
+  r.readAsDataURL(file);
+}
+function tryRestorePreviewImage() {
+  const data = localStorage.getItem(PREVIEW_KEY);
+  if (!data) return false;
+  previewBox.innerHTML = "";
+  const img = document.createElement("img");
+  img.src = data;
+  img.alt = "Preview (restored)";
+  previewBox.appendChild(img);
+  return true;
+}
+
+// save file blob into IDB with generated id
+async function saveFileBlob(file) {
+  try {
+    const id = crypto.randomUUID ? crypto.randomUUID() : "fid_" + Date.now();
+    const obj = { id: id, name: file.name || "file", size: file.size || file.size, type: file.type || "", blob: file };
+    await idbPut(obj);
+    return { id, name: obj.name, size: obj.size, type: obj.type };
+  } catch (e) {
+    console.warn("saveFileBlob failed", e);
+    return null;
+  }
+}
+async function removeFileBlob(id) {
+  try { await idbDelete(id); } catch (e) { console.warn(e); }
+}
+
+// ===== UI helpers =====
+function showMessage(text, type = "info") {
+  const classMap = { info: "alert alert-info", warning: "alert alert-warning", error: "alert alert-error" };
+  messageBox.innerHTML = `<div class="${classMap[type]}">${text}</div>`;
+}
+function renderBlobPreview(blob, filename, type) {
+  const url = URL.createObjectURL(blob);
+  previewBox.innerHTML = "";
+  if (type === "image" || (blob.type && blob.type.startsWith("image"))) {
+    const img = document.createElement("img");
+    img.src = url;
+    img.alt = filename || "Preview Image";
+    previewBox.appendChild(img);
+  } else {
+    const video = document.createElement("video");
+    video.src = url;
+    video.controls = true;
+    video.loop = true;
+    video.muted = true;
+    previewBox.appendChild(video);
+  }
+}
+function renderPreviewPlaceholder() {
+  previewBox.innerHTML = `
+    <div class="preview-placeholder">
+      <span class="icon">${state.inputType === "image" ? "📷" : "🎥"}</span>
+      Chưa có file. Hãy upload một ${state.inputType === "image" ? "ảnh" : "video"} để xem trước.
+    </div>
+  `;
+}
+
+// unified loading button
+function setLoading(isLoading) {
+  if (isLoading) {
+    analyzeButton.disabled = true;
+    analyzeButtonIcon.innerHTML = "";
+    analyzeButtonIcon.classList.add("spinner");
+    analyzeButtonText.textContent = "Đang phân tích...";
+  } else {
+    analyzeButton.disabled = false;
+    analyzeButtonIcon.classList.remove("spinner");
+    if (state.phase === "need_continue") {
+      analyzeButtonIcon.textContent = "⏭";
+      analyzeButtonText.textContent = "Tiếp tục";
+    } else {
+      analyzeButtonIcon.textContent = "🚀";
+      analyzeButtonText.textContent = "Phân tích";
+    }
+  }
+}
+
+// ===== file input handler (single) =====
+fileInput.addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) {
+    state.fileBlob = null;
+    if (state.fileMeta && state.fileMeta.id) { await removeFileBlob(state.fileMeta.id); }
+    state.fileMeta = null;
+    renderPreviewPlaceholder();
+    trySavePreviewImage(null);
+    saveAppState();
+    return;
+  }
+
+  state.fileBlob = file;
+  // save to IDB for persistence (video or large image)
+  const meta = await saveFileBlob(file);
+  if (meta) {
+    state.fileMeta = meta;
+  } else {
+    // fallback: clear meta but keep blob in-memory
+    state.fileMeta = null;
+  }
+
+  // also save small image preview if applicable
+  trySavePreviewImage(file);
+  renderBlobPreview(file, file.name, state.inputType);
+  saveAppState();
+});
+
+// input type switch
+inputTypeGroup.addEventListener("click", (e) => {
+  const pill = e.target.closest(".radio-pill");
+  if (!pill) return;
+  const value = pill.getAttribute("data-value");
+  if (!value) return;
+  state.inputType = value;
+  inputTypeGroup.querySelectorAll(".radio-pill").forEach(p => p.classList.remove("active"));
+  pill.classList.add("active");
+  // when switching type, clear file selection (safer)
+  fileInput.value = "";
+  state.fileBlob = null;
+  if (state.fileMeta && state.fileMeta.id) { removeFileBlob(state.fileMeta.id); state.fileMeta = null; }
+  renderPreviewPlaceholder();
+  showMessage("Đã chuyển sang chế độ " + (value === "image" ? "Ảnh" : "Video") + ".", "info");
+  saveAppState();
+});
+
+// ===== analyze button =====
+analyzeButton.addEventListener("click", async () => {
+  if (state.phase === "need_continue") {
+    state.phase = "ready";
+    setLoading(false);
+    showMessage("Bạn có thể chọn testcase tiếp theo rồi bấm Phân tích để chạy.", "info");
+    saveAppState();
+    return;
+  }
+  if (state.phase === "running") return;
+  if (!state.fileBlob) { showMessage("Vui lòng chọn một file trước khi phân tích.", "warning"); return; }
+
+  state.phase = "running";
+  setLoading(true);
+  showMessage("Đang gửi dữ liệu lên server...", "info");
+  const start = performance.now();
+
+  try {
+    const endpoint = state.inputType === "image" ? "/predict/image" : "/predict/video";
+    const formData = new FormData();
+    // append blob with filename
+    const filename = state.fileMeta?.name || (state.fileBlob.name || `upload_${Date.now()}`);
+    formData.append("file", state.fileBlob, filename);
+    formData.append("model_name", modelSelect.value);
+
+    const resp = await fetch(`${API_BASE}${endpoint}`, { method: "POST", body: formData });
+    let raw;
+    try { raw = await resp.json(); } catch (e) { showMessage("Không đọc được JSON từ server.", "error"); return; }
+
+    if (!resp.ok || raw.status !== "success") {
+      const msg = raw && raw.error ? raw.error : "Server trả về lỗi không xác định.";
+      showMessage("Lỗi từ server: " + msg, "error");
+      return;
+    }
+
+    const className = raw.class_name || raw.className || raw.class || "UNKNOWN";
+    const label = className === "REAL" ? "live" : className === "FAKE" ? "spoof" : "unknown";
+    const durationMs = raw.duration_ms ?? Math.round(performance.now() - start);
+    const score = raw.score ?? (raw.probability ?? null);
+
+    const rec = {
+      id: crypto.randomUUID ? crypto.randomUUID() : "r" + Date.now(),
+      timestamp: new Date().toISOString(),
+      label,
+      score,
+      duration_ms: durationMs,
+      model: modelSelect.value,
+      inputType: state.inputType
     };
 
-    // ====== DOM ELEMENTS ======
-    const inputTypeGroup = document.getElementById("inputTypeGroup");
-    const fileInput = document.getElementById("fileInput");
-    const previewBox = document.getElementById("previewBox");
-    const analyzeButton = document.getElementById("analyzeButton");
-    const analyzeButtonText = document.getElementById("analyzeButtonText");
-    const analyzeButtonIcon = document.getElementById("analyzeButtonIcon");
-    const messageBox = document.getElementById("messageBox");
-    const resultBadge = document.getElementById("resultBadge");
-    const resultLabel = document.getElementById("resultLabel");
-    const resultScore = document.getElementById("resultScore");
-    const metricModel = document.getElementById("metricModel");
-    const metricInputType = document.getElementById("metricInputType");
-    const metricDuration = document.getElementById("metricDuration");
-    const historyList = document.getElementById("historyList");
-    const clearHistoryBtn = document.getElementById("clearHistoryBtn");
-    const modelSelect = document.getElementById("modelSelect");
+    // keep history bounded
+    state.history = (state.history || []).concat([rec]).slice(-50);
+    state.currentRecord = rec;
+    state.phase = "need_continue";
 
-    // ====== EVENT: CHỌN LOẠI INPUT (ẢNH / VIDEO) ======
-    inputTypeGroup.addEventListener("click", (e) => {
-      const pill = e.target.closest(".radio-pill");
-      if (!pill) return;
-      const value = pill.getAttribute("data-value");
-      if (!value) return;
+    updateResultFromApi(rec);
+    renderHistory();
+    saveAppState();
+    showMessage("Đã nhận kết quả. Nhấn 'Tiếp tục' để sẵn sàng cho testcase tiếp theo.", "info");
+  } catch (err) {
+    console.error(err);
+    showMessage("Đã xảy ra lỗi trong quá trình gọi API.", "error");
+  } finally {
+    setLoading(false);
+  }
+});
 
-      state.inputType = value;
+// ===== update UI functions =====
+function updateResultFromApi(data) {
+  const label = (data.label || "").toLowerCase();
+  const score = data.score !== null && data.score !== undefined ? data.score : "N/A";
+  const durationMs = data.duration_ms ?? data.durationMs ?? "N/A";
 
-      inputTypeGroup.querySelectorAll(".radio-pill").forEach((p) => p.classList.remove("active"));
-      pill.classList.add("active");
+  resultBadge.classList.remove("result-label-live", "result-label-spoof", "result-label-none");
+  if (label === "live") { resultBadge.classList.add("result-label-live"); resultLabel.textContent = "THẬT (LIVE)"; }
+  else if (label === "spoof") { resultBadge.classList.add("result-label-spoof"); resultLabel.textContent = "GIẢ MẠO (SPOOF)"; }
+  else { resultBadge.classList.add("result-label-none"); resultLabel.textContent = "Không xác định"; }
 
-      fileInput.value = "";
-      state.file = null;
-      renderPreviewPlaceholder();
-      showMessage("Đã chuyển sang chế độ " + (value === "image" ? "Ảnh" : "Video") + ".", "info");
-    });
+  resultScore.textContent = `• Score spoof: ${score}`;
+  metricModel.textContent = modelSelect.options[modelSelect.selectedIndex].text;
+  metricInputType.textContent = state.inputType === "image" ? "Ảnh" : "Video";
+  metricDuration.textContent = `${durationMs} ms`;
+}
 
-    // ====== EVENT: CHỌN FILE ======
-    fileInput.addEventListener("change", (e) => {
-      const file = e.target.files[0];
-      if (!file) {
-        state.file = null;
-        renderPreviewPlaceholder();
-        return;
-      }
-      state.file = file;
-      renderPreview(file, state.inputType);
-    });
+function addHistoryRecord(data) {
+  // deprecated: we now manage history in analyze flow
+  // keep for compatibility
+  state.history = (state.history || []).concat([data]).slice(-50);
+  state.currentRecord = data;
+  renderHistory();
+  saveAppState();
+}
 
-    function renderPreviewPlaceholder() {
-      previewBox.innerHTML = `
-        <div class="preview-placeholder">
-          <span class="icon">${state.inputType === "image" ? "📷" : "🎥"}</span>
-          Chưa có file. Hãy upload một ${state.inputType === "image" ? "ảnh" : "video"} để xem trước.
-        </div>
-      `;
-    }
+function renderHistory() {
+  if (!state.history || state.history.length === 0) {
+    historyList.innerHTML = `Chưa có bản ghi nào trước đó.`;
+    return;
+  }
+  historyList.innerHTML = "";
+  // show latest first
+  const item = state.history[state.history.length - 1];
+  const container = document.createElement("div");
+  container.className = "history-item";
+  const left = document.createElement("div"); left.className = "history-left";
+  const main = document.createElement("div"); main.className = "history-line-main";
 
-    function renderPreview(file, type) {
-      const url = URL.createObjectURL(file);
-      previewBox.innerHTML = "";
-      if (type === "image") {
-        const img = document.createElement("img");
-        img.src = url;
-        img.alt = "Preview Image";
-        previewBox.appendChild(img);
-      } else {
-        const video = document.createElement("video");
-        video.src = url;
-        video.controls = true;
-        video.loop = true;
-        video.muted = true;
-        previewBox.appendChild(video);
-      }
-    }
+  const typePill = document.createElement("span");
+  typePill.className = `pill ${item.inputType === "image" ? "pill-image" : "pill-video"}`;
+  typePill.textContent = item.inputType === "image" ? "Ảnh" : "Video";
 
-    // ====== HIỂN THỊ MESSAGE ======
-    function showMessage(text, type = "info") {
-      const classMap = {
-        info: "alert alert-info",
-        warning: "alert alert-warning",
-        error: "alert alert-error"
-      };
-      messageBox.innerHTML = `<div class="${classMap[type]}">${text}</div>`;
-    }
+  const resultPill = document.createElement("span");
+  resultPill.className = `pill pill-${item.label}`;
+  resultPill.textContent = item.label === "live" ? "LIVE" : "SPOOF";
 
-    // ====== NÚT PHÂN TÍCH / TIẾP TỤC ======
-    analyzeButton.addEventListener("click", async () => {
-      // Nếu đang ở phase "need_continue" thì click này chỉ để CHO PHÉP chạy testcase tiếp theo
-      if (state.phase === "need_continue") {
-        state.phase = "ready";
-        analyzeButtonIcon.textContent = "🚀";
-        analyzeButtonText.textContent = "Phân tích";
-        showMessage("Bạn có thể chọn testcase tiếp theo rồi bấm Phân tích để chạy.", "info");
-        return;
-      }
+  const scoreSpan = document.createElement("span");
+  scoreSpan.innerHTML = `<strong>Score:</strong> ${item.score !== null && item.score !== undefined ? Number(item.score).toFixed(3) : "N/A"}`;
 
-      // Nếu đang chạy thì ignore (dù nút đã disable rồi)
-      if (state.phase === "running") {
-        return;
-      }
+  const modelSpan = document.createElement("span");
+  modelSpan.className = "badge-model";
+  modelSpan.textContent = item.model || modelSelect.options[modelSelect.selectedIndex].text;
 
-      // phase === "ready" → chạy inference
-      if (!state.file) {
-        showMessage("Vui lòng chọn một file trước khi phân tích.", "warning");
-        return;
-      }
+  main.appendChild(typePill); main.appendChild(resultPill); main.appendChild(scoreSpan); main.appendChild(modelSpan);
 
-      state.phase = "running";
-      setLoading(true);
-      showMessage("Đang gửi dữ liệu lên server...", "info");
+  const ts = document.createElement("div");
+  ts.className = "history-timestamp";
+  ts.textContent = `${new Date(item.timestamp).toLocaleString()} • ${item.duration_ms !== undefined && item.duration_ms !== null ? `${item.duration_ms} ms` : ""}`;
 
-      const start = performance.now();
+  left.appendChild(main); left.appendChild(ts);
+  container.appendChild(left);
+  historyList.appendChild(container);
+}
 
-      try {
-        const endpoint =
-          state.inputType === "image" ? "/predict/image" : "/predict/video";
+// clear history button
+clearHistoryBtn.addEventListener("click", () => {
+  state.history = [];
+  state.currentRecord = null;
+  renderHistory();
+  saveAppState();
+});
 
-        const formData = new FormData();
-        formData.append("file", state.file);
-        formData.append("model_name", modelSelect.value);
+// beforeunload warning if unsaved / running
+window.addEventListener("beforeunload", (e) => {
+  const running = state.phase === "running";
+  const hasFile = !!state.fileBlob;
+  if (running || hasFile) {
+    e.preventDefault();
+    e.returnValue = "";
+    return "";
+  }
+});
 
-        const response = await fetch(`${API_BASE}${endpoint}`, {
-          method: "POST",
-          body: formData,
-        });
+// initial load
+window.addEventListener("DOMContentLoaded", async () => {
+  await loadAppState();
+  if (!state.fileBlob) {
+    tryRestorePreviewImage();
+  }
+  renderPreviewPlaceholder();
+});
 
-        let raw;
-        try {
-          raw = await response.json();
-        } catch (parseErr) {
-          console.error("Parse JSON error:", parseErr);
-          showMessage("Không đọc được JSON từ server.", "error");
-          return;
-        }
+</script>
 
-        if (!response.ok || raw.status !== "success") {
-          const msg = raw && raw.error ? raw.error : "Server trả về lỗi không xác định.";
-          showMessage("Lỗi từ server: " + msg, "error");
-          return;
-        }
-
-        const className = raw.class_name; // "REAL" | "FAKE"
-        const label =
-          className === "REAL"
-            ? "live"
-            : className === "FAKE"
-            ? "spoof"
-            : "unknown";
-
-        const durationMs = Math.round(performance.now() - start);
-
-        const normalized = {
-          label: label,
-          score: null,
-          duration_ms: durationMs,
-        };
-
-        // Cập nhật lịch sử: chỉ giữ KẾT QUẢ LẦN TRƯỚC
-        addHistoryRecord(normalized);
-
-        // Cập nhật UI cho kết quả hiện tại
-        updateResultFromApi(normalized);
-
-        // Sau khi xong → chuyển sang phase "need_continue"
-        state.phase = "need_continue";
-        showMessage("Đã nhận kết quả. Nhấn 'Tiếp tục' để sẵn sàng cho testcase tiếp theo.", "info");
-      } catch (err) {
-        console.error(err);
-        showMessage("Đã xảy ra lỗi trong quá trình gọi API.", "error");
-      } finally {
-        setLoading(false);
-      }
-    });
-
-    function setLoading(isLoading) {
-      if (isLoading) {
-        analyzeButton.disabled = true;
-        analyzeButtonIcon.innerHTML = "";
-        analyzeButtonIcon.classList.add("spinner");
-        analyzeButtonText.textContent = "Đang phân tích...";
-      } else {
-        analyzeButton.disabled = false;
-        analyzeButtonIcon.classList.remove("spinner");
-
-        if (state.phase === "need_continue") {
-          analyzeButtonIcon.textContent = "⏭";
-          analyzeButtonText.textContent = "Tiếp tục";
-        } else {
-          analyzeButtonIcon.textContent = "🚀";
-          analyzeButtonText.textContent = "Phân tích";
-        }
-      }
-    }
-
-    // ====== CẬP NHẬT KẾT QUẢ HIỆN TẠI ======
-    function updateResultFromApi(data) {
-      const label = (data.label || "unknown").toLowerCase();
-      const score = typeof data.score === "number" ? data.score : null;
-      const durationMs = typeof data.duration_ms === "number" ? data.duration_ms : null;
-
-      resultBadge.classList.remove("result-label-live", "result-label-spoof", "result-label-none");
-      if (label === "live") {
-        resultBadge.classList.add("result-label-live");
-        resultLabel.textContent = "THẬT (LIVE)";
-      } else if (label === "spoof") {
-        resultBadge.classList.add("result-label-spoof");
-        resultLabel.textContent = "GIẢ MẠO (SPOOF)";
-      } else {
-        resultBadge.classList.add("result-label-none");
-        resultLabel.textContent = "Không xác định";
-      }
-
-      if (score !== null) {
-        resultScore.textContent = `• Score spoof: ${score.toFixed(3)}`;
-      } else {
-        resultScore.textContent = "• Score spoof: N/A";
-      }
-
-      const modelText = modelSelect.options[modelSelect.selectedIndex].text;
-      metricModel.textContent = modelText;
-      metricInputType.textContent = state.inputType === "image" ? "Ảnh" : "Video";
-      metricDuration.textContent = durationMs !== null ? `${durationMs} ms` : "–";
-    }
-
-    // ====== LỊCH SỬ: CHỈ LẦN TRƯỚC ======
-    function addHistoryRecord(data) {
-      const label = (data.label || "unknown").toLowerCase();
-      const score = typeof data.score === "number" ? data.score : null;
-      const durationMs = typeof data.duration_ms === "number" ? data.duration_ms : null;
-
-      const now = new Date();
-      const timestamp = now.toLocaleString("vi-VN");
-
-      const record = {
-        label,
-        score,
-        durationMs,
-        timestamp,
-        modelText: modelSelect.options[modelSelect.selectedIndex].text,
-        inputType: state.inputType
-      };
-
-      if (state.currentRecord) {
-        state.history = [state.currentRecord];
-      }
-
-      state.currentRecord = record;
-
-      renderHistory();
-    }
-
-    function renderHistory() {
-      if (!state.history.length) {
-        historyList.innerHTML = `Chưa có bản ghi nào trước đó.`;
-        return;
-      }
-
-      const item = state.history[0];
-      historyList.innerHTML = "";
-
-      const container = document.createElement("div");
-      container.className = "history-item";
-
-      const left = document.createElement("div");
-      left.className = "history-left";
-
-      const main = document.createElement("div");
-      main.className = "history-line-main";
-
-      const typePill = document.createElement("span");
-      typePill.className = "pill " + (item.inputType === "image" ? "pill-image" : "pill-video");
-      typePill.textContent = item.inputType === "image" ? "Ảnh" : "Video";
-
-      const resultPill = document.createElement("span");
-      if (item.label === "live") {
-        resultPill.className = "pill pill-live";
-        resultPill.textContent = "LIVE";
-      } else if (item.label === "spoof") {
-        resultPill.className = "pill pill-spoof";
-        resultPill.textContent = "SPOOF";
-      } else {
-        resultPill.className = "pill";
-        resultPill.textContent = "Unknown";
-      }
-
-      const scoreSpan = document.createElement("span");
-      scoreSpan.innerHTML = `<strong>Score:</strong> ${
-        item.score !== null ? item.score.toFixed(3) : "N/A"
-      }`;
-
-      const modelSpan = document.createElement("span");
-      modelSpan.className = "badge-model";
-      modelSpan.textContent = item.modelText;
-
-      main.appendChild(typePill);
-      main.appendChild(resultPill);
-      main.appendChild(scoreSpan);
-      main.appendChild(modelSpan);
-
-      const ts = document.createElement("div");
-      ts.className = "history-timestamp";
-      ts.textContent =
-        item.timestamp + (item.durationMs !== null ? ` • ${item.durationMs} ms` : "");
-
-      left.appendChild(main);
-      left.appendChild(ts);
-
-      container.appendChild(left);
-      historyList.appendChild(container);
-    }
-
-    clearHistoryBtn.addEventListener("click", () => {
-      state.history = [];
-      renderHistory();
-    });
-
-    renderPreviewPlaceholder();
-  </script>
+  
