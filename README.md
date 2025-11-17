@@ -68,12 +68,19 @@ project_root/
    ```
   -Sau đó mở `fe/index.html` bằng **Live Server** (VS Code) → FE gọi `http://127.0.0.1:8000`.
 
- cách 2 : Chạy be và fe.
+ cách 2 : 
+ Tạo môi trường .vev 
+ ```bash
+ uv sync
+ source .venv/bin/activate 
+ ```
+ Chạy be và fe.
   **Chạy backend**
    ```bash
    uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload
    ```
   **Mở frontend**
    - Mở `fe/index.html` bằng **Live Server** (VS Code) → FE gọi `http://127.0.0.1:8000`.
+
 
 
