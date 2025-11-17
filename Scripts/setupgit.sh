@@ -1,13 +1,13 @@
 #!/bin/bash
-set -e
+#set -e
 
 git config user.name "ThanhVV"
 git config user.email "Thanh2005.hs@gmail.com"
 
-ssh-keygen -t ed25519 -C "Thanh2005.hs@gmail.com"
-cat ~/.ssh/id_ed25519.pub
+#ssh-keygen -t ed25519 -C "Thanh2005.hs@gmail.com"
+#cat ~/.ssh/id_ed25519.pub
 
-git remote -v
+#git remote -v
 
 ssh -T git@github.com
 
