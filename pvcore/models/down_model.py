@@ -3,7 +3,7 @@ import os
 
 def build_model():
     id_MobileNetV3 = "146aT2Ze5KwgOj-ooIWDn7Uw8YN4yTxPE"
-    id_VisionTriX = "1CYxcJ3HQBO_mhiXFhd-pmdvszQrN55ij"
+    id_VisionTriX = "1tLLC6YWzvDojJkIb0odLl0yB_PIHJOVU"
 
     
     base_dir = os.path.dirname(os.path.abspath(__file__))
